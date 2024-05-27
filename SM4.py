@@ -1,0 +1,131 @@
+class SM4:
+    def __init__(self, key):  # 初始化，使用SM4密钥生成算法基于输入密钥生成轮密钥
+        self.keys = [0] * 32
+        temp = [0] * 4
+        # 系统参数Fk
+        FK = [0xa3b1bac6, 0x56aa3350, 0x677d9197, 0xb27022dc]
+        # 固定参数CK
+        CK = [0x00070e15, 0x1c232a31, 0x383f464d, 0x545b6269,
+              0x70777e85, 0x8c939aa1, 0xa8afb6bd, 0xc4cbd2d9,
+              0xe0e7eef5, 0xfc030a11, 0x181f262d, 0x343b4249,
+              0x50575e65, 0x6c737a81, 0x888f969d, 0xa4abb2b9,
+              0xc0c7ced5, 0xdce3eaf1, 0xf8ff060d, 0x141b2229,
+              0x30373e45, 0x4c535a61, 0x686f767d, 0x848b9299,
+              0xa0a7aeb5, 0xbcc3cad1, 0xd8dfe6ed, 0xf4fb0209,
+              0x10171e25, 0x2c333a41, 0x484f565d, 0x646b7279
+              ]
+
+        # 密钥与系统参数FK异或
+        for i in range(4):
+            temp[i] = ((key[4 * i] << 24) | (key[4 * i + 1] << 16) | (key[4 * i + 2] << 8) | key[4 * i + 3]) ^ FK[i]
+
+        # 32轮循环
+        for i in range(32):
+            # 计算合成置换T`的输入K1^K2^K3^CK
+            box_input = temp[1] ^ temp[2] ^ temp[3] ^ CK[i]
+            # 通过S盒进行非线性变换
+            box_output = self.s_box(box_input)
+            # 进行线性变换L`并将结果与Ki异或
+            self.keys[i] = temp[0] ^ box_output ^ self.RotateLeft(box_output, 13) ^ self.RotateLeft(box_output, 23)
+            # 整理下一轮密钥
+            temp[0], temp[1], temp[2], temp[3] = temp[1], temp[2], temp[3], self.keys[i]
+
+    def sm4(self, input_val, keys, mod):  # SM4加解密函数
+        # 将输入的数据整理为X0,X1,X2,X3四个32bit的串
+        text = [((input_val[4 * i] << 24) | (input_val[4 * i + 1] << 16) | (input_val[4 * i + 2] << 8) | input_val[
+            4 * i + 3]) for
+                i in range(4)]
+
+        # 32轮循环
+        for i in range(32):
+            index = i if mod == 0 else 31 - i
+            # 计算合成置换T的输入X1^X2^X3^rk
+            box_input = text[1] ^ text[2] ^ text[3] ^ keys[index]
+            # 通过S盒进行非线性变换
+            box_output = self.s_box(box_input)
+            # 进行线性变换L并将结果与Xi异或
+            temp = text[0] ^ box_output ^ self.RotateLeft(box_output, 2) ^ self.RotateLeft(box_output,
+                                                                                           10) ^ self.RotateLeft(
+                box_output, 18) ^ self.RotateLeft(box_output, 24)
+            # 反序变换
+            text[0], text[1], text[2], text[3] = text[1], text[2], text[3], temp
+
+        output = [0] * 16
+
+        # 输出结果
+        for i in range(4):
+            byte_vals = (text[3 - i] >> 24) & 0xFF, (text[3 - i] >> 16) & 0xFF, (text[3 - i] >> 8) & 0xFF, text[
+                3 - i] & 0xFF
+            for j in range(4):
+                output[4 * i + j] = byte_vals[j]
+
+        return bytes(output)
+
+    def encrypt(self, plaintext):
+        return self.sm4(plaintext, self.keys, 0)
+
+    def decrypt(self, ciphertext):
+        return self.sm4(ciphertext, self.keys, 1)
+
+    def RotateLeft(self, input_val, shift):  # 将32位无符号整数循环左移指定位数
+        return ((input_val << shift) | (input_val >> (32 - shift))) & 0xFFFFFFFF
+
+    def s_box(self, box_input):  # 使用查找表进行S盒变换
+        SBOX = [
+            0xD6, 0x90, 0xE9, 0xFE, 0xCC, 0xE1, 0x3D, 0xB7, 0x16, 0xB6, 0x14, 0xC2, 0x28, 0xFB, 0x2C, 0x05, 0x2B, 0x67,
+            0x9A,
+            0x76, 0x2A, 0xBE, 0x04, 0xC3, 0xAA, 0x44, 0x13, 0x26, 0x49, 0x86, 0x06, 0x99, 0x9C, 0x42, 0x50, 0xF4, 0x91,
+            0xEF,
+            0x98, 0x7A, 0x33, 0x54, 0x0B, 0x43, 0xED, 0xCF, 0xAC, 0x62, 0xE4, 0xB3, 0x1C, 0xA9, 0xC9, 0x08, 0xE8, 0x95,
+            0x80,
+            0xDF, 0x94, 0xFA, 0x75, 0x8F, 0x3F, 0xA6, 0x47, 0x07, 0xA7, 0xFC, 0xF3, 0x73, 0x17, 0xBA, 0x83, 0x59, 0x3C,
+            0x19,
+            0xE6, 0x85, 0x4F, 0xA8, 0x68, 0x6B, 0x81, 0xB2, 0x71, 0x64, 0xDA, 0x8B, 0xF8, 0xEB, 0x0F, 0x4B, 0x70, 0x56,
+            0x9D,
+            0x35, 0x1E, 0x24, 0x0E, 0x5E, 0x63, 0x58, 0xD1, 0xA2, 0x25, 0x22, 0x7C, 0x3B, 0x01, 0x21, 0x78, 0x87, 0xD4,
+            0x00,
+            0x46, 0x57, 0x9F, 0xD3, 0x27, 0x52, 0x4C, 0x36, 0x02, 0xE7, 0xA0, 0xC4, 0xC8, 0x9E, 0xEA, 0xBF, 0x8A, 0xD2,
+            0x40,
+            0xC7, 0x38, 0xB5, 0xA3, 0xF7, 0xF2, 0xCE, 0xF9, 0x61, 0x15, 0xA1, 0xE0, 0xAE, 0x5D, 0xA4, 0x9B, 0x34, 0x1A,
+            0x55,
+            0xAD, 0x93, 0x32, 0x30, 0xF5, 0x8C, 0xB1, 0xE3, 0x1D, 0xF6, 0xE2, 0x2E, 0x82, 0x66, 0xCA, 0x60, 0xC0, 0x29,
+            0x23,
+            0xAB, 0x0D, 0x53, 0x4E, 0x6F, 0xD5, 0xDB, 0x37, 0x45, 0xDE, 0xFD, 0x8E, 0x2F, 0x03, 0xFF, 0x6A, 0x72, 0x6D,
+            0x6C,
+            0x5B, 0x51, 0x8D, 0x1B, 0xAF, 0x92, 0xBB, 0xDD, 0xBC, 0x7F, 0x11, 0xD9, 0x5C, 0x41, 0x1F, 0x10, 0x5A, 0xD8,
+            0x0A,
+            0xC1, 0x31, 0x88, 0xA5, 0xCD, 0x7B, 0xBD, 0x2D, 0x74, 0xD0, 0x12, 0xB8, 0xE5, 0xB4, 0xB0, 0x89, 0x69, 0x97,
+            0x4A,
+            0x0C, 0x96, 0x77, 0x7E, 0x65, 0xB9, 0xF1, 0x09, 0xC5, 0x6E, 0xC6, 0x84, 0x18, 0xF0, 0x7D, 0xEC, 0x3A, 0xDC,
+            0x4D,
+            0x20, 0x79, 0xEE, 0x5F, 0x3E, 0xD7, 0xCB, 0x39, 0x48]
+
+        temp = (box_input >> 24) & 0xFF, (box_input >> 16) & 0xFF, (box_input >> 8) & 0xFF, box_input & 0xFF
+        output = [SBOX[val & 0xFF] for val in temp]
+
+        return (output[0] << 24) | (output[1] << 16) | (output[2] << 8) | output[3]
+
+
+if __name__ == '__main__':
+    # 在此处输入16进制密钥
+    hex_data = "0123456789ABCDEFFEDCBA9876543210"
+    key = bytes.fromhex(hex_data.replace(' ', ''))
+    sm4 = SM4(key)
+
+    # 在此处输入明文文本
+    plaintext = b'202420213007250zhoulvxuan'
+    padding = (16 - len(plaintext) % 16).to_bytes()
+    plaintext_padded = plaintext + padding * (16 - len(plaintext) % 16)
+    plaintext_blocks = [plaintext_padded[i:i + 16] for i in range(0, len(plaintext_padded), 16)]
+
+    # 对每个块进行单独加密
+    ciphertext_blocks = [sm4.encrypt(block) for block in plaintext_blocks]
+    # 拼接加密后的各个块，形成密文
+    ciphertext = b''.join(ciphertext_blocks)
+    print("加密结果(十六进制): ", ciphertext.hex())
+
+    # 对每个块进行单独解密
+    plaintext_blocks = [sm4.decrypt(block) for block in ciphertext_blocks]
+    # 拼接解密后的各个块，并删除多余部分，形成明文
+    newplaintext = b''.join(plaintext_blocks).split(padding)[0]
+    print("解密结果: ", newplaintext)
